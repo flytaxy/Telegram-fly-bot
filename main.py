@@ -1,16 +1,14 @@
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import Message
 from aiogram.utils import executor
-import os
 
-API_TOKEN = os.getenv("BOT_TOKEN")
+API_TOKEN = "7841476557:AAGbZa8RxgmJcw5shIz2WcxiCrETntc9Ccs"
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-@dp.message_handler(commands=['start'])
-async def start_command(message: Message):
-    await message.answer("Привіт! Це FlyTaxi бот. Чим можу допомогти?")
+@dp.message_handler(commands=["start"])
+async def cmd_start(message: types.Message):
+    await message.answer("Привіт! Я бот Flytaxy 🚕")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
