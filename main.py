@@ -3,6 +3,12 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils import executor
 import logging
 import os
+from dotenv import load_dotenv
+load_dotenv()
+api_key = os.getenv("ORS_API_KEY")
+bot_token = os.getenv("BOT_TOKEN")
+import openrouteservice
+
 
 # Ініціалізація бота з токеном із змінної середовища
 API_TOKEN = os.getenv("BOT_TOKEN")
@@ -47,7 +53,7 @@ async def handle_location(message: types.Message):
     await message.answer (
     f"Ми отримали твою локацію:\n📍 Широта: {latitude}\n📍 Довгота: {longitude}\n\n"
     "Тепер надішли адресу, куди їхати 🏁",
-    reply_markup=types.ReplyKeyboardRemove())
+    reply_markup=types.ReplyKeyboardRemove())pip install python-doten
 
 # Обробка введеної адреси призначення
 @dp.message_handler(content_types=types.ContentType.TEXT)
@@ -66,6 +72,14 @@ async def handle_destination(message: types.Message):
         del user_locations[user_id]
     else:
         await message.answer("Спочатку надішліть свою локацію 📍")
+        async def get_route(start_coords, end_coords):
+    client = openrouteservice.Client(key=ORS_API_KEY)
+    route = client.directions(
+        coordinates=[start_coords, end_coords],
+        profile='driving-car',
+        format='geojson'
+    )
+    return route
 # Запуск бота
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
