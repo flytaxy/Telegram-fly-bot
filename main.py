@@ -44,10 +44,10 @@ async def handle_location(message: types.Message):
 
     user_locations[user_id] = {"lat": latitude, "lon": longitude}
 
-    await message.answer(
+    await message.answer (
     f"Ми отримали твою локацію:\n📍 Широта: {latitude}\n📍 Довгота: {longitude}\n\n"
     "Тепер надішли адресу, куди їхати 🏁",
-    reply_markup=types.ReplyKeyboardRemove()
+    reply_markup=types.ReplyKeyboardRemove())
 
 # Обробка введеної адреси призначення
 @dp.message_handler(content_types=types.ContentType.TEXT)
