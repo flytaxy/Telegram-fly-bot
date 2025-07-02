@@ -8,6 +8,7 @@ import os
 API_TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
+user_locations = {}
 
 # Увімкнення логування
 logging.basicConfig(level=logging.INFO)
@@ -32,7 +33,39 @@ async def handle_location(message: types.Message):
     longitude = message.location.longitude
 
     await message.answer(f"Ми отримали твою локацію:\n📍 Широта: {latitude}\n📍 Довгота: {longitude}\nОчікуй авто!")
+user_locations = {}
 
+# Обробка отриманої локації
+@dp.message_handler(content_types=types.ContentType.LOCATION)
+async def handle_location(message: types.Message):
+    user_id = message.from_user.id
+    latitude = message.location.latitude
+    longitude = message.location.longitude
+
+    user_locations[user_id] = {"lat": latitude, "lon": longitude}
+
+    await message.answer(
+        f"Ми отримали твою локацію:\n📍 Широта: {latitude}\n📍 Довгота: {longitude}\n\n"
+        "Тепер надішли адресу, куди їхати 🏁"
+    )
+
+# Обробка введеної адреси призначення
+@dp.message_handler(content_types=types.ContentType.TEXT)
+async def handle_destination(message: types.Message):
+    user_id = message.from_user.id
+    destination = message.text
+
+    if user_id in user_locations:
+        start = user_locations[user_id]
+        await message.answer(
+            f"🚕 Ваш маршрут:\n"
+            f"Початкова точка: 📍 {start['lat']}, {start['lon']}\n"
+            f"Пункт призначення: 📍 {destination}\n\n"
+            "Очікуйте авто, скоро приїде! 😉"
+        )
+        del user_locations[user_id]
+    else:
+        await message.answer("Спочатку надішліть свою локацію 📍")
 # Запуск бота
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
