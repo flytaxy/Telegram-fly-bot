@@ -70,7 +70,7 @@ async def handle_destination(message: Message):
         coords = [start_coords, dest_coords]
 
         # Побудова маршруту
-        route = client.directions(coords=coords, profile='driving-car', format='geojson')
+        route = client.directions(coords, profile='driving-car', format='geojson')
         distance = route['features'][0]['properties']['summary']['distance'] / 1000
 
         await message.answer(f"Довжина маршруту: {distance:.2f} км 🚗")
