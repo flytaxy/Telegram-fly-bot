@@ -34,5 +34,5 @@ async def handle_location(message: types.Message):
     await message.answer(f"Ми отримали твою локацію:\n📍 Широта: {latitude}\n📍 Довгота: {longitude}\nОчікуй авто!")
 
 # Запуск бота
-if name == "main":
+if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
