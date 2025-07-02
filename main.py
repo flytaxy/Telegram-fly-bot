@@ -1,90 +1,103 @@
-import os
 import logging
-import openrouteservice
+import os
+import requests
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message, Location, FSInputFile
+from aiogram.enums import ParseMode
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from dotenv import load_dotenv
-from aiogram import Bot, Dispatcher, types
-from aiogram.enums import ContentType
-from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, Message
-import asyncio
 
-# Завантаження змінних середовища
 load_dotenv()
-ORS_API_KEY = os.getenv("ORS_API_KEY")
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+ORS_API_KEY = os.getenv("ORS_API_KEY")
 
-# Ініціалізація бота та диспетчера
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
-user_locations = {}
+bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
+dp = Dispatcher(storage=MemoryStorage())
 
-# Хендлер старту
-@dp.message(Command("start"))
-async def send_welcome(message: Message):
-    location_button = KeyboardButton(
-        text="📍 Надіслати локацію",
-        request_location=True
-    )
+logging.basicConfig(level=logging.INFO)
+
+class OrderTaxi(StatesGroup):
+    waiting_for_location = State()
+    waiting_for_destination = State()
+
+@dp.message(F.text == "/start")
+async def cmd_start(message: Message, state: FSMContext):
     keyboard = ReplyKeyboardMarkup(
-        keyboard=[[location_button]],
+        keyboard=[[KeyboardButton(text="📍 Надіслати локацію", request_location=True)]],
         resize_keyboard=True
     )
-    await message.answer(
-        "Привіт! Надішли свою локацію, щоб викликати таксі 🚕",
-        reply_markup=keyboard
-    )
+    await message.answer("Привіт! Надішли свою локацію, щоб почати замовлення таксі:", reply_markup=keyboard)
+    await state.set_state(OrderTaxi.waiting_for_location)
 
-# Хендлер локації
-@dp.message(lambda message: message.location is not None)
-async def handle_location(message: Message):
-    lat = message.location.latitude
-    lon = message.location.longitude
-    user_locations[message.from_user.id] = (lat, lon)
-    await message.answer("Локацію отримано ✅\nТепер введи адресу призначення 🏁")
+@dp.message(OrderTaxi.waiting_for_location, F.location)
+async def process_location(message: Message, state: FSMContext):
+    await state.update_data(location=message.location)
+    await message.answer("Тепер введи адресу призначення (наприклад: Хрещатик 22, Київ):", reply_markup=ReplyKeyboardMarkup(keyboard=[], resize_keyboard=True))
+    await state.set_state(OrderTaxi.waiting_for_destination)
 
-# Хендлер адреси
-@dp.message()
-async def handle_destination(message: Message):
-    user_id = message.from_user.id
-    if user_id not in user_locations:
-        await message.answer("Спочатку надішліть свою локацію 📍")
+@dp.message(OrderTaxi.waiting_for_destination)
+async def process_destination(message: Message, state: FSMContext):
+    user_data = await state.get_data()
+    location = user_data["location"]
+    start_coords = [location.longitude, location.latitude]
+
+    destination_text = message.text
+
+    # Геокодування
+    geo_url = f"https://api.openrouteservice.org/geocode/search?api_key={ORS_API_KEY}&text={destination_text}&boundary.country=UA"
+    geo_response = requests.get(geo_url).json()
+
+    if not geo_response.get("features"):
+        await message.answer("Не вдалося знайти адресу. Спробуй ще раз.")
         return
 
-    client = openrouteservice.Client(key=ORS_API_KEY)
+    end_coords = geo_response["features"][0]["geometry"]["coordinates"]
 
-    # Додаємо місто для точного пошуку
-    address = message.text + ", Київ, Україна"
+    # Побудова маршруту
+    route_url = "https://api.openrouteservice.org/v2/directions/driving-car"
+    headers = {
+        "Authorization": ORS_API_KEY,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "coordinates": [start_coords, end_coords]
+    }
+    route_response = requests.post(route_url, json=payload, headers=headers).json()
 
     try:
-        # Геокодування адреси
-        geocode = client.pelias_search(text=address)
+        segment = route_response["features"][0]["properties"]["segments"][0]
+        distance_km = round(segment["distance"] / 1000, 2)
+        duration_min = round(segment["duration"] / 60, 1)
+    except Exception:
+        await message.answer("Помилка при побудові маршруту.")
+        return
 
-        if not geocode['features']:
-            await message.answer("😕 Не вдалося знайти адресу. Спробуй ще раз.")
-            return
+    # Генерація зображення маршруту
+    coords_str = f"{start_coords[0]},{start_coords[1]}|{end_coords[0]},{end_coords[1]}"
+    map_url = f"https://api.openrouteservice.org/maps/staticmap?api_key={ORS_API_KEY}&layer=mapnik&size=600x400&markers={coords_str}&path={coords_str}"
 
-        # Координати призначення
-        dest_coords = geocode['features'][0]['geometry']['coordinates']  # [lon, lat]
-        # Початкові координати
-        start_coords = user_locations[user_id]  # (lat, lon)
+    try:
+        map_img = requests.get(map_url)
+        map_path = "route_map.png"
+        with open(map_path, "wb") as f:
+            f.write(map_img.content)
+        photo = FSInputFile(map_path)
+        await bot.send_photo(message.chat.id, photo, caption=(
+            f"<b>Маршрут побудовано!</b> 🗺️\n"
+            f"Відстань: <b>{distance_km} км</b>\n"
+            f"Орієнтовний час: <b>{duration_min} хв</b>"
+        ), parse_mode="HTML")
+        os.remove(map_path)
+    except Exception:
+        await message.answer("Не вдалося завантажити карту маршруту, але відстань: "
+                             f"{distance_km} км, час: {duration_min} хв")
 
-        # Побудова маршруту
-        route = client.directions(
-            [[start_coords[1], start_coords[0]], dest_coords],
-            profile='driving-car',
-            format='geojson'
-        )
-
-        distance = route['features'][0]['properties']['summary']['distance'] / 1000
-        await message.answer(f"Довжина маршруту: {distance:.2f} км 🚗")
-
-    except Exception as e:
-        await message.answer(f"Помилка побудови маршруту 😓:\n{e}")
-
-# Запуск бота
-async def main():
-    logging.basicConfig(level=logging.INFO)
-    await dp.start_polling(bot)
+    await state.clear()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import asyncio
+    asyncio.run(dp.start_polling(bot))
