@@ -58,15 +58,22 @@ async def process_destination(message: Message, state: FSMContext):
     end_coords = geo_response["features"][0]["geometry"]["coordinates"]
 
     # Побудова маршруту
-    route_url = "https://api.openrouteservice.org/v2/directions/driving-car"
-    headers = {
-        "Authorization": ORS_API_KEY,
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "coordinates": [start_coords, end_coords]
-    }
-    route_response = requests.post(route_url, json=payload, headers=headers).json()
+   route_url = "https://api.openrouteservice.org/v2/directions/driving-car"
+headers = {
+    "Authorization": ORS_API_KEY,
+    "Content-Type": "application/json"
+}
+payload = {
+    "coordinates": [start_coords, end_coords],
+    "instructions": False,  # прибираємо текстові інструкції, щоб не зламалось
+}
+response = requests.post(route_url, json=payload, headers=headers)
+
+if response.status_code != 200:
+    await message.answer(f"❌ OpenRouteService повернув помилку: {response.status_code}\n{response.text}")
+    return
+
+route_response = response.json()
 
     try:
         segment = route_response["features"][0]["properties"]["segments"][0]
