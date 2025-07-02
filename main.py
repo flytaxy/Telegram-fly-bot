@@ -58,6 +58,7 @@ async def process_destination(message: Message, state: FSMContext):
     end_coords = geo_response["features"][0]["geometry"]["coordinates"]
 
     # Побудова маршруту
+    
    route_url = "https://api.openrouteservice.org/v2/directions/driving-car"
 headers = {
     "Authorization": ORS_API_KEY,
