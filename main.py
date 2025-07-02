@@ -2,10 +2,10 @@ import os
 import logging
 import openrouteservice
 from dotenv import load_dotenv
-from aiogram import Bot, Dispatcher, types, Router
+from aiogram import Bot, Dispatcher, types
 from aiogram.enums import ContentType
 from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, Message
 import asyncio
 
 # Завантаження змінних середовища
@@ -16,16 +16,11 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 # Ініціалізація
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
-router = Router()
-dp.include_router(router)
 user_locations = {}
 
-# Логування
-logging.basicConfig(level=logging.INFO)
-
-# /start
-@dp.message_handler(commands=["start"])
-async def send_welcome(message: types.Message):
+# Хендлер /start
+@dp.message(Command("start"))
+async def send_welcome(message: Message):
     location_button = KeyboardButton(
         text="📍 Надіслати локацію",
         request_location=True
@@ -39,50 +34,41 @@ async def send_welcome(message: types.Message):
     await message.answer(
         "Привіт! Надішли свою локацію, щоб викликати таксі 🚕",
         reply_markup=keyboard
-
-# Локація
-@dp.message(lambda m: m.content_type == ContentType.LOCATION)
-async def handle_location(message: types.Message):
-    user_id = message.from_user.id
-    latitude = message.location.latitude
-    longitude = message.location.longitude
-
-    user_locations[user_id] = {"lat": latitude, "lon": longitude}
-
-    await message.answer(
-        f"Ми отримали твою локацію:\nШирота: {latitude}\nДовгота: {longitude}\n"
-        "Тепер надішли адресу призначення 📬",
-        reply_markup=ReplyKeyboardRemove()
     )
 
-# Адреса
-@dp.message(lambda m: m.content_type == ContentType.TEXT)
-async def handle_destination(message: types.Message):
-    user_id = message.from_user.id
-    destination = message.text
+# Хендлер локації
+@dp.message(lambda message: message.location is not None)
+async def handle_location(message: Message):
+    lat = message.location.latitude
+    lon = message.location.longitude
+    user_locations[message.from_user.id] = (lat, lon)
+    await message.answer("Локацію отримано. Введіть адресу призначення")
 
+# Хендлер адреси
+@dp.message()
+async def handle_destination(message: Message):
+    user_id = message.from_user.id
     if user_id not in user_locations:
-        await message.answer("Спочатку надішли свою локацію 📍")
+        await message.answer("Спочатку надішліть локацію 📍")
         return
 
-    start = user_locations[user_id]
-    await message.answer(f"📦 Пункт призначення: {destination}\nПочаткова точка: {start['lat']}, {start['lon']}")
-
-    route = get_route(start_coords=start, end_coords=start)  # Поки тест
-    # Ти можеш додати вивід маршруту тут
-
-def get_route(start_coords, end_coords):
     client = openrouteservice.Client(key=ORS_API_KEY)
-    route = client.directions(
-        coordinates=[start_coords, end_coords],
-        profile='driving-car',
-        format='geojson'
-    )
-    return route
+    coords = [
+        (user_locations[user_id][1], user_locations[user_id][0]),  # (lon, lat)
+        message.text  # Спрощено: розглядається текст як координати
+    ]
 
-# Запуск
+    try:
+        route = client.directions(coords)
+        distance = route['routes'][0]['summary']['distance'] / 1000
+        await message.answer(f"Довжина маршруту: {distance:.2f} км")
+    except Exception as e:
+        await message.answer(f"Помилка побудови маршруту: {e}")
+
+# Старт бота
 async def main():
+    logging.basicConfig(level=logging.INFO)
     await dp.start_polling(bot)
 
-if __name__ == "__main__":
+if name == "main":
     asyncio.run(main())
