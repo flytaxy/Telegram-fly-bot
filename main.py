@@ -13,12 +13,12 @@ load_dotenv()
 ORS_API_KEY = os.getenv("ORS_API_KEY")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Ініціалізація
+# Ініціалізація бота та диспетчера
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 user_locations = {}
 
-# Хендлер /start
+# Хендлер старту
 @dp.message(Command("start"))
 async def send_welcome(message: Message):
     location_button = KeyboardButton(
@@ -52,27 +52,30 @@ async def handle_destination(message: Message):
 
     client = openrouteservice.Client(key=ORS_API_KEY)
 
+    # Додаємо місто для точного пошуку
+    address = message.text + ", Київ, Україна"
+
     try:
-        # Геокодуємо адресу
-        geocode = client.pelias_search(text=message.text)
+        # Геокодування адреси
+        geocode = client.pelias_search(text=address)
 
         if not geocode['features']:
-            await message.answer("Не вдалося знайти адресу. Спробуй ще раз 🧐")
+            await message.answer("😕 Не вдалося знайти адресу. Спробуй ще раз.")
             return
 
+        # Координати призначення
         dest_coords = geocode['features'][0]['geometry']['coordinates']  # [lon, lat]
-
-        if not isinstance(dest_coords, list) or len(dest_coords) != 2:
-            await message.answer("Координати адреси некоректні 😕")
-            return
-
-        start_coords = [user_locations[user_id][1], user_locations[user_id][0]]  # [lon, lat]
-        coords = [start_coords, dest_coords]
+        # Початкові координати
+        start_coords = user_locations[user_id]  # (lat, lon)
 
         # Побудова маршруту
-        route = client.directions(coords, profile='driving-car', format='geojson')
-        distance = route['features'][0]['properties']['summary']['distance'] / 1000
+        route = client.directions(
+            [[start_coords[1], start_coords[0]], dest_coords],
+            profile='driving-car',
+            format='geojson'
+        )
 
+        distance = route['features'][0]['properties']['summary']['distance'] / 1000
         await message.answer(f"Довжина маршруту: {distance:.2f} км 🚗")
 
     except Exception as e:
