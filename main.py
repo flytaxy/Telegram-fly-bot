@@ -16,6 +16,8 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 # Ініціалізація
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+router = Router()
+dp.include_router(router)
 user_locations = {}
 
 # Логування
