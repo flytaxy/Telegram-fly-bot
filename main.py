@@ -22,4 +22,4 @@ async def send_welcome(message: Message):
     await message.answer("Привіт! Надішли свою локацію, щоб викликати таксі 🚕", reply_markup=keyboard)
 
 # Обробка отриманої локації
-@dp.message_handler(content_types=types.ContentType.LOCATION
+@dp.message_handler(content_types=types.ContentType.LOCATION)
