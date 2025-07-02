@@ -25,12 +25,10 @@ async def send_welcome(message: Message):
         text="📍 Надіслати локацію",
         request_location=True
     )
-
     keyboard = ReplyKeyboardMarkup(
         keyboard=[[location_button]],
         resize_keyboard=True
     )
-
     await message.answer(
         "Привіт! Надішли свою локацію, щоб викликати таксі 🚕",
         reply_markup=keyboard
@@ -42,33 +40,48 @@ async def handle_location(message: Message):
     lat = message.location.latitude
     lon = message.location.longitude
     user_locations[message.from_user.id] = (lat, lon)
-    await message.answer("Локацію отримано. Введіть адресу призначення")
+    await message.answer("Локацію отримано ✅\nТепер введи адресу призначення 🏁")
 
 # Хендлер адреси
 @dp.message()
 async def handle_destination(message: Message):
     user_id = message.from_user.id
     if user_id not in user_locations:
-        await message.answer("Спочатку надішліть локацію 📍")
+        await message.answer("Спочатку надішліть свою локацію 📍")
         return
 
     client = openrouteservice.Client(key=ORS_API_KEY)
-    coords = [
-        (user_locations[user_id][1], user_locations[user_id][0]),  # (lon, lat)
-        message.text  # Спрощено: розглядається текст як координати
-    ]
 
     try:
-        route = client.directions(coords)
-        distance = route['routes'][0]['summary']['distance'] / 1000
-        await message.answer(f"Довжина маршруту: {distance:.2f} км")
-    except Exception as e:
-        await message.answer(f"Помилка побудови маршруту: {e}")
+        # Геокодуємо адресу
+        geocode = client.pelias_search(text=message.text)
 
-# Старт бота
+        if not geocode['features']:
+            await message.answer("Не вдалося знайти адресу. Спробуй ще раз 🧐")
+            return
+
+        dest_coords = geocode['features'][0]['geometry']['coordinates']  # [lon, lat]
+
+        if not isinstance(dest_coords, list) or len(dest_coords) != 2:
+            await message.answer("Координати адреси некоректні 😕")
+            return
+
+        start_coords = [user_locations[user_id][1], user_locations[user_id][0]]  # [lon, lat]
+        coords = [start_coords, dest_coords]
+
+        # Побудова маршруту
+        route = client.directions(coords=coords, profile='driving-car', format='geojson')
+        distance = route['features'][0]['properties']['summary']['distance'] / 1000
+
+        await message.answer(f"Довжина маршруту: {distance:.2f} км 🚗")
+
+    except Exception as e:
+        await message.answer(f"Помилка побудови маршруту 😓:\n{e}")
+
+# Запуск бота
 async def main():
     logging.basicConfig(level=logging.INFO)
     await dp.start_polling(bot)
 
-if __name__== "__main__":
+if __name__ == "__main__":
     asyncio.run(main())
