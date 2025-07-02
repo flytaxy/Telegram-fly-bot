@@ -1,14 +1,25 @@
 from aiogram import Bot, Dispatcher, types
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils import executor
+import logging
+import os
 
-API_TOKEN = "7841476557:AAGbZa8RxgmJcw5shIz2WcxiCrETntc9Ccs"
-
+# Ініціалізація бота з токеном із змінної оточення
+API_TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-@dp.message_handler(commands=["start"])
-async def cmd_start(message: types.Message):
-    await message.answer("Привіт! Я бот Flytaxy 🚕")
+# Увімкнення логування
+logging.basicConfig(level=logging.INFO)
 
-if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
+# Обробка команди /start
+@dp.message_handler(commands=["start"])
+async def send_welcome(message: Message):
+    # Кнопка для надсилання локації
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    location_button = KeyboardButton(text="📍 Надіслати локацію", request_location=True)
+    keyboard.add(location_button)
+    await message.answer("Привіт! Надішли свою локацію, щоб викликати таксі 🚕", reply_markup=keyboard)
+
+# Обробка отриманої локації
+@dp.message_handler(content_types=types.ContentType.LOCATION
