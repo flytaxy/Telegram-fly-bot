@@ -24,13 +24,21 @@ user_locations = {}
 logging.basicConfig(level=logging.INFO)
 
 # /start
-@dp.message(Command("start"))
+@dp.message_handler(commands=["start"])
 async def send_welcome(message: types.Message):
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    location_button = KeyboardButton(text="📍 Надіслати локацію", request_location=True)
-    keyboard.add(location_button)
+    location_button = KeyboardButton(
+        text="📍 Надіслати локацію",
+        request_location=True
+    )
 
-    await message.answer("Привіт! Надішли свою локацію, щоб викликати таксі 🚕", reply_markup=keyboard)
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[[location_button]],
+        resize_keyboard=True
+    )
+
+    await message.answer(
+        "Привіт! Надішли свою локацію, щоб викликати таксі 🚕",
+        reply_markup=keyboard
 
 # Локація
 @dp.message(lambda m: m.content_type == ContentType.LOCATION)
