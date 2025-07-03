@@ -1,0 +1,9 @@
+{
+    "python.defaultInterpreterPath": "C:\\Users\\sega1\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "python.formatting.provider": "black",
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "ms-python.python",
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter"
+    }
+}

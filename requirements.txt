@@ -1,5 +1,5 @@
 aiogram==3.4
 python-dotenv
-openrouteservice
+googlemaps==4.10.0
 folium
 geopy
