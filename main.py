@@ -105,11 +105,12 @@ try:
         m.save("route.html")
         os.system(f"wkhtmltoimage --quality 80 route.html {map_path}")
 
-await state.update_data(
+    try:
+        await state.update_data(
             distance_km=distance_km,
             duration_min=duration_min,
-            map_path=map_path
-        )
+            map_path=map_path 
+            )
 
         await message.answer(
             f"📍 Маршрут знайдено!\n"
@@ -125,10 +126,9 @@ await state.update_data(
             ),
             parse_mode="HTML"
         )
-
         await state.set_state(OrderTaxi.waiting_for_car_class)
 
-    except Exception as e:
+        except Exception as e:
         await message.answer(f"‼️ Не вдалося побудувати маршрут.\nПомилка: {str(e)}")
         await state.clear()
 
