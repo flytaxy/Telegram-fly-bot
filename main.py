@@ -1,4 +1,3 @@
-Сергій Вікторович, [03.07.2025 7:46]
 import os
 import logging
 import requests
