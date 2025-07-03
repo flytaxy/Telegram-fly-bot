@@ -105,7 +105,6 @@ try:
         m.save("route.html")
         os.system(f"wkhtmltoimage --quality 80 route.html {map_path}")
 
-Сергій Вікторович, [03.07.2025 7:46]
 await state.update_data(
             distance_km=distance_km,
             duration_min=duration_min,
