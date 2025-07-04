@@ -57,8 +57,11 @@ def is_restricted_time():
 def load_users():
     if not os.path.exists("users.json"):
         return {}
-    with open("users.json", "r") as f:
-        return json.load(f)
+    try:
+        with open("users.json", "r") as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        return {}
 
 
 def save_user(user_id, data):
