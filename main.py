@@ -4,7 +4,14 @@ import logging
 import requests
 from datetime import datetime, time
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import Message, FSInputFile, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    Message,
+    FSInputFile,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -22,6 +29,7 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 logging.basicConfig(level=logging.INFO)
 
+
 class RideStates(StatesGroup):
     waiting_for_phone = State()
     waiting_for_location = State()
@@ -29,19 +37,22 @@ class RideStates(StatesGroup):
     waiting_for_car_class = State()
     waiting_for_confirmation = State()
 
+
 def is_peak_time():
     now = datetime.now(ZoneInfo("Europe/Kyiv")).time()
     peak_periods = [
         (time(5, 0), time(6, 0)),
         (time(7, 30), time(11, 0)),
         (time(16, 30), time(19, 30)),
-        (time(21, 30), time(23, 59, 59))
+        (time(21, 30), time(23, 59, 59)),
     ]
     return any(start <= now <= end for start, end in peak_periods)
+
 
 def is_restricted_time():
     now = datetime.now(ZoneInfo("Europe/Kyiv")).time()
     return time(0, 0) <= now < time(5, 0)
+
 
 def load_users():
     if not os.path.exists("users.json"):
@@ -49,16 +60,20 @@ def load_users():
     with open("users.json", "r") as f:
         return json.load(f)
 
+
 def save_user(user_id, data):
     users = load_users()
     users[str(user_id)] = data
     with open("users.json", "w") as f:
         json.dump(users, f, indent=4)
 
+
 @dp.message(CommandStart())
 async def start(message: Message, state: FSMContext):
     if is_restricted_time():
-        await message.answer("🚫 Служба не працює з 00:00 до 05:00 через комендантську годину.")
+        await message.answer(
+            "🚫 Служба не працює з 00:00 до 05:00 через комендантську годину."
+        )
         return
 
     await message.answer("👋 Привіт, тебе вітає TaxiFly!")
@@ -67,18 +82,29 @@ async def start(message: Message, state: FSMContext):
     user_id = str(message.from_user.id)
     if user_id in users:
         kb = ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="📍 Надіслати локацію", request_location=True)]],
-            resize_keyboard=True
+            keyboard=[
+                [KeyboardButton(text="📍 Надіслати локацію", request_location=True)]
+            ],
+            resize_keyboard=True,
         )
         await message.answer("Надішліть свою локацію:", reply_markup=kb)
         await state.set_state(RideStates.waiting_for_location)
     else:
         kb = ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="📱 Надіслати номер телефону", request_contact=True)]],
-            resize_keyboard=True
+            keyboard=[
+                [
+                    KeyboardButton(
+                        text="📱 Надіслати номер телефону", request_contact=True
+                    )
+                ]
+            ],
+            resize_keyboard=True,
         )
-        await message.answer("Для початку, надішліть свій номер телефону:", reply_markup=kb)
+        await message.answer(
+            "Для початку, надішліть свій номер телефону:", reply_markup=kb
+        )
         await state.set_state(RideStates.waiting_for_phone)
+
 
 @dp.message(RideStates.waiting_for_phone, F.contact)
 async def handle_phone(message: Message, state: FSMContext):
@@ -88,26 +114,32 @@ async def handle_phone(message: Message, state: FSMContext):
         "id": user_id,
         "name": contact.first_name,
         "username": message.from_user.username,
-        "phone": contact.phone_number
+        "phone": contact.phone_number,
     }
     save_user(user_id, user_data)
     kb = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📍 Надіслати локацію", request_location=True)]],
-        resize_keyboard=True
+        resize_keyboard=True,
     )
     await message.answer("Дякую! Тепер надішліть свою локацію:", reply_markup=kb)
     await state.set_state(RideStates.waiting_for_location)
 
+
 @dp.message(RideStates.waiting_for_location, F.location)
 async def handle_location(message: Message, state: FSMContext):
     if is_restricted_time():
-        await message.answer("🚫 Служба не працює з 00:00 до 05:00 через комендантську годину.")
+        await message.answer(
+            "🚫 Служба не працює з 00:00 до 05:00 через комендантську годину."
+        )
         return
     lat = message.location.latitude
     lon = message.location.longitude
     await state.update_data(start_coords=(lat, lon))
-    await message.answer("Тепер введіть адресу призначення:", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer(
+        "Тепер введіть адресу призначення:", reply_markup=types.ReplyKeyboardRemove()
+    )
     await state.set_state(RideStates.waiting_for_address)
+
 
 def geocode_address(address: str):
     url = "https://maps.googleapis.com/maps/api/geocode/json"
@@ -118,6 +150,7 @@ def geocode_address(address: str):
         location = data["results"][0]["geometry"]["location"]
         return (location["lat"], location["lng"])
     return None
+
 
 @dp.message(RideStates.waiting_for_address)
 async def handle_address(message: Message, state: FSMContext):
@@ -140,13 +173,31 @@ async def handle_address(message: Message, state: FSMContext):
             price = int(price * 1.3)
         prices[car_class] = price
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"🚗 Стандарт – {prices['Стандарт']}₴", callback_data="class_Стандарт")],
-        [InlineKeyboardButton(text=f"🚘 Комфорт – {prices['Комфорт']}₴", callback_data="class_Комфорт")],
-        [InlineKeyboardButton(text=f"🚖 Бізнес – {prices['Бізнес']}₴", callback_data="class_Бізнес")]
-    ])
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"🚗 Стандарт – {prices['Стандарт']}₴",
+                    callback_data="class_Стандарт",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=f"🚘 Комфорт – {prices['Комфорт']}₴",
+                    callback_data="class_Комфорт",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=f"🚖 Бізнес – {prices['Бізнес']}₴",
+                    callback_data="class_Бізнес",
+                )
+            ],
+        ]
+    )
     await message.answer("Оберіть клас авто:", reply_markup=kb)
     await state.set_state(RideStates.waiting_for_car_class)
+
 
 @dp.callback_query(RideStates.waiting_for_car_class)
 async def process_car_class(callback: types.CallbackQuery, state: FSMContext):
@@ -161,7 +212,7 @@ async def process_car_class(callback: types.CallbackQuery, state: FSMContext):
         "origin": f"{start_coords[0]},{start_coords[1]}",
         "destination": f"{end_coords[0]},{end_coords[1]}",
         "mode": "driving",
-        "key": GOOGLE_MAPS_API_KEY
+        "key": GOOGLE_MAPS_API_KEY,
     }
     directions_response = requests.get(directions_url, params=directions_params)
     directions_data = directions_response.json()
@@ -170,10 +221,10 @@ async def process_car_class(callback: types.CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ Не вдалося побудувати маршрут.")
         return
 
-    route = directions_data['routes'][0]['legs'][0]
-    distance_text = route['distance']['text']
-    duration_text = route['duration']['text']
-    distance_km = float(route['distance']['value']) / 1000
+    route = directions_data["routes"][0]["legs"][0]
+    distance_text = route["distance"]["text"]
+    duration_text = route["duration"]["text"]
+    distance_km = float(route["distance"]["value"]) / 1000
 
     price = calculate_price(car_class, distance_km)
     if is_peak_time():
@@ -184,7 +235,7 @@ async def process_car_class(callback: types.CallbackQuery, state: FSMContext):
         "size": "600x400",
         "path": f"enc:{directions_data['routes'][0]['overview_polyline']['points']}",
         "markers": f"color:green|label:A|{start_coords[0]},{start_coords[1]}&markers=color:red|label:B|{end_coords[0]},{end_coords[1]}",
-        "key": GOOGLE_MAPS_API_KEY
+        "key": GOOGLE_MAPS_API_KEY,
     }
 
     map_response = requests.get(static_map_url, params=static_map_params)
@@ -204,29 +255,39 @@ async def process_car_class(callback: types.CallbackQuery, state: FSMContext):
             text += "⚠️ Застосовано піковий тариф: +30%"
 
         await callback.message.answer_photo(photo)
-        confirm_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Підтвердити замовлення", callback_data="confirm_ride")]
-        ])
+        confirm_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="✅ Підтвердити замовлення", callback_data="confirm_ride"
+                    )
+                ]
+            ]
+        )
         await callback.message.answer(text, reply_markup=confirm_kb)
         await state.set_state(RideStates.waiting_for_confirmation)
-        else:
         await callback.message.answer("❌ Не вдалося зберегти карту.")
+
 
 @dp.callback_query(RideStates.waiting_for_confirmation, F.data == "confirm_ride")
 async def confirm_ride(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.answer("🚕 Ваше замовлення підтверджено! Очікуйте авто.")
     restart_kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="🔄 Перезапустити")]],
-        resize_keyboard=True
+        keyboard=[[KeyboardButton(text="🔄 Перезапустити")]], resize_keyboard=True
     )
-    await callback.message.answer("Бажаєте зробити нове замовлення?", reply_markup=restart_kb)
+    await callback.message.answer(
+        "Бажаєте зробити нове замовлення?", reply_markup=restart_kb
+    )
     await state.clear()
+
 
 @dp.message(F.text == "🔄 Перезапустити")
 async def restart(message: Message, state: FSMContext):
     await start(message, state)
 
+
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(dp.start_polling(bot))
