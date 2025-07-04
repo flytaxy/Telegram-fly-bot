@@ -58,6 +58,13 @@ def load_users():
     if not os.path.exists("users.json"):
         return {}
     with open("users.json", "r") as f:
+        content = f.read().strip()
+        if not content:
+            return {}
+        return json.loads(content)
+
+        return {}
+    with open("users.json", "r") as f:
         return json.load(f)
 
 
@@ -72,7 +79,7 @@ def save_user(user_id, data):
 async def start(message: Message, state: FSMContext):
     if is_restricted_time():
         await message.answer(
-            "🚫 Служба не працює з 00:00 до 05:00 через комендантську годину."
+            "🚫 Сервіс тимчасово недоступний з 00:00 до 05:00 у зв'язку з комендантською годиною."
         )
         return
 
@@ -129,7 +136,7 @@ async def handle_phone(message: Message, state: FSMContext):
 async def handle_location(message: Message, state: FSMContext):
     if is_restricted_time():
         await message.answer(
-            "🚫 Служба не працює з 00:00 до 05:00 через комендантську годину."
+            "🚫 Сервіс тимчасово недоступний з 00:00 до 05:00 у зв'язку з комендантською годиною."
         )
         return
     lat = message.location.latitude
@@ -196,7 +203,6 @@ async def handle_address(message: Message, state: FSMContext):
         ]
     )
     await message.answer("Оберіть клас авто:", reply_markup=kb)
-    await state.set_state(RideStates.waiting_for_car_class)
 
 
 @dp.callback_query(RideStates.waiting_for_car_class)
@@ -266,6 +272,7 @@ async def process_car_class(callback: types.CallbackQuery, state: FSMContext):
         )
         await callback.message.answer(text, reply_markup=confirm_kb)
         await state.set_state(RideStates.waiting_for_confirmation)
+    else:
         await callback.message.answer("❌ Не вдалося зберегти карту.")
 
 
