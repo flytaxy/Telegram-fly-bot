@@ -3,7 +3,6 @@ import json
 import logging
 import requests
 from datetime import datetime, time
-from zoneinfo import ZoneInfo
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import Message, FSInputFile, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.state import State, StatesGroup
@@ -12,8 +11,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.filters import CommandStart, StateFilter
 from aiogram import F
 from cd import calculate_price
-
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
+
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
@@ -128,6 +128,26 @@ async def handle_address(message: Message, state: FSMContext):
         return
     await state.update_data(end_coords=end_coords)
 
+    user_data = await state.get_data()
+    start_coords = user_data["start_coords"]
+    distance_km = 1.0  # тимчасове значення для кнопок
+
+    peak = is_peak_time()
+    prices = {}
+    for car_class in ["Стандарт", "Комфорт", "Бізнес"]:
+        price = calculate_price(car_class, distance_km)
+        if peak:
+            price = int(price * 1.3)
+        prices[car_class] = price
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"🚗 Стандарт – {prices['Стандарт']}₴", callback_data="class_Стандарт")],
+        [InlineKeyboardButton(text=f"🚘 Комфорт – {prices['Комфорт']}₴", callback_data="class_Комфорт")],
+        [InlineKeyboardButton(text=f"🚖 Бізнес – {prices['Бізнес']}₴", callback_data="class_Бізнес")]
+    ])
+    await message.answer("Оберіть клас авто:", reply_markup=kb)
+    await state.set_state(RideStates.waiting_for_car_class)
+
 @dp.callback_query(RideStates.waiting_for_car_class)
 async def process_car_class(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -156,8 +176,7 @@ async def process_car_class(callback: types.CallbackQuery, state: FSMContext):
     distance_km = float(route['distance']['value']) / 1000
 
     price = calculate_price(car_class, distance_km)
-    peak = is_peak_time()
-    if peak:
+    if is_peak_time():
         price = int(price * 1.3)
 
     static_map_url = "https://maps.googleapis.com/maps/api/staticmap"
@@ -179,10 +198,10 @@ async def process_car_class(callback: types.CallbackQuery, state: FSMContext):
             f"📍 Відстань: {distance_text}"
             f"🕒 Тривалість: {duration_text}"
             f"🚗 Клас авто: {car_class}"
-            f"💸 Вартість поїздки: {price}₴")
-        if peak:
-            text += "
-⚠️ Застосовано піковий тариф: +30%"
+            f"💸 Вартість поїздки: {price}₴"
+        )
+        if is_peak_time():
+            text += "⚠️ Застосовано піковий тариф: +30%"
 
         await callback.message.answer_photo(photo)
         confirm_kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -190,7 +209,7 @@ async def process_car_class(callback: types.CallbackQuery, state: FSMContext):
         ])
         await callback.message.answer(text, reply_markup=confirm_kb)
         await state.set_state(RideStates.waiting_for_confirmation)
-    else:
+        else:
         await callback.message.answer("❌ Не вдалося зберегти карту.")
 
 @dp.callback_query(RideStates.waiting_for_confirmation, F.data == "confirm_ride")
