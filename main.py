@@ -3,6 +3,7 @@ import json
 import logging
 import requests
 from datetime import datetime, time
+from zoneinfo import ZoneInfo
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
     Message,
@@ -39,7 +40,7 @@ class RideStates(StatesGroup):
 
 
 def is_peak_time():
-    now = datetime.now().time()
+    now = datetime.now(ZoneInfo("Europe/Kyiv")).time()
     peak_periods = [
         (time(5, 0), time(6, 0)),
         (time(7, 30), time(11, 0)),
@@ -50,18 +51,15 @@ def is_peak_time():
 
 
 def is_restricted_time():
-    now = datetime.now().time()
+    now = datetime.now(ZoneInfo("Europe/Kyiv")).time()
     return time(0, 0) <= now < time(5, 0)
 
 
 def load_users():
     if not os.path.exists("users.json"):
         return {}
-    try:
-        with open("users.json", "r") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return {}
+    with open("users.json", "r") as f:
+        return json.load(f)
 
 
 def save_user(user_id, data):
@@ -79,6 +77,8 @@ async def start(message: Message, state: FSMContext):
         )
         return
 
+    await message.answer("👋 Привіт, тебе вітає TaxiFly!")
+
     users = load_users()
     user_id = str(message.from_user.id)
     if user_id in users:
@@ -88,7 +88,7 @@ async def start(message: Message, state: FSMContext):
             ],
             resize_keyboard=True,
         )
-        await message.answer("Вітаємо назад! Надішліть свою локацію:", reply_markup=kb)
+        await message.answer("Надішліть свою локацію:", reply_markup=kb)
         await state.set_state(RideStates.waiting_for_location)
     else:
         kb = ReplyKeyboardMarkup(
@@ -102,7 +102,7 @@ async def start(message: Message, state: FSMContext):
             resize_keyboard=True,
         )
         await message.answer(
-            "Привіт! Для початку, надішліть свій номер телефону:", reply_markup=kb
+            "Для початку, надішліть свій номер телефону:", reply_markup=kb
         )
         await state.set_state(RideStates.waiting_for_phone)
 
@@ -163,9 +163,21 @@ async def handle_address(message: Message, state: FSMContext):
     await state.update_data(end_coords=end_coords)
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🚗 Економ", callback_data="class_Економ")],
-            [InlineKeyboardButton(text="🚘 Комфорт", callback_data="class_Комфорт")],
-            [InlineKeyboardButton(text="🚖 Бізнес", callback_data="class_Бізнес")],
+            [
+                InlineKeyboardButton(
+                    text="🚗 Економ – 120₴", callback_data="class_Економ"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🚘 Комфорт – 150₴", callback_data="class_Комфорт"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🚖 Бізнес – 180₴", callback_data="class_Бізнес"
+                )
+            ],
         ]
     )
     await message.answer("Оберіть клас авто:", reply_markup=kb)
