@@ -86,7 +86,7 @@ async def start(message: Message, state: FSMContext):
     if is_curfew():
         await message.answer("⛔️ Сервіс тимчасово недоступний через комендантську годину (00:00 – 05:00).")
         return
-    await message.answer("👋 Вас вітає таксі Fly!
+    await message.answer ("👋 Вас вітає таксі Fly!"
 
 Надішліть вашу геолокацію для початку замовлення:",
         reply_markup=ReplyKeyboardMarkup(
