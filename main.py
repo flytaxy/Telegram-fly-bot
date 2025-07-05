@@ -88,12 +88,10 @@ async def start(message: Message, state: FSMContext):
         return
     await message.answer ("👋 Вас вітає таксі Fly!"
 
-Надішліть вашу геолокацію для початку замовлення:",
-        reply_markup=ReplyKeyboardMarkup(
+Надішліть вашу геолокацію для початку замовлення:"reply_markup=ReplyKeyboardMarkup(
             keyboard=[[KeyboardButton(text="📍 Надіслати локацію", request_location=True)]],
-            resize_keyboard=True,
-        ),
-    )
+            resize_keyboard=True,)
+    
     await state.set_state(OrderTaxi.waiting_for_location)
 
 @dp.message(F.location, StateFilter(OrderTaxi.waiting_for_location))
