@@ -214,19 +214,19 @@ async def handle_address(message: Message, state: FSMContext):
             [
                 InlineKeyboardButton(
                     text=f"🚗 Стандарт – {prices['Стандарт']}₴",
-                    callback_data="class_Стандарт",
+                    callback_data="class_standard",
                 )
             ],
             [
                 InlineKeyboardButton(
                     text=f"🚘 Комфорт – {prices['Комфорт']}₴",
-                    callback_data="class_Комфорт",
+                    callback_data="class_comfort",
                 )
             ],
             [
                 InlineKeyboardButton(
                     text=f"🚖 Бізнес – {prices['Бізнес']}₴",
-                    callback_data="class_Бізнес",
+                    callback_data="class_business",
                 )
             ],
         ]
@@ -264,7 +264,9 @@ if __name__ == "__main__":
 @dp.callback_query(F.data.startswith("class_"))
 async def handle_car_class(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    car_class = callback.data.split("_")[1]
+    class_code = callback.data.split("_")[1]
+    car_map = {"standard": "Стандарт", "comfort": "Комфорт", "business": "Бізнес"}
+    car_class = car_map.get(class_code, class_code)
     distance_km = data["distance_km"]
     price = calculate_price(car_class, distance_km)
 
@@ -340,9 +342,8 @@ async def rate_driver(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
 
-
-# === Автоматична оцінка, якщо не натиснуто ===
-async def confirm_ride_end(user_id: int):
+    # === Автоматична оцінка, якщо не натиснуто ===
+    # (Вже реалізовано раніше, дубль видалено)
     try:
         with open("ratings.json", "r", encoding="utf-8") as f:
             ratings = json.load(f)
