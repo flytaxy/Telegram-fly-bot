@@ -207,20 +207,20 @@ async def handle_address(message: Message, state: FSMContext):
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=f"🚗 Стандарт – {prices['Стандарт']}₴",
-                    callback_data="class_Стандарт",
+                    text=f"🚗 Стандарт {prices['Стандарт']}₴",
+                    callback_data="class Стандарт",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text=f"🚘 Комфорт – {prices['Комфорт']}₴",
-                    callback_data="class_Комфорт",
+                    text=f"🚘 Комфорт {prices['Комфорт']}₴",
+                    callback_data="class Комфорт",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text=f"🚖 Бізнес – {prices['Бізнес']}₴",
-                    callback_data="class_Бізнес",
+                    text=f"🚖 Бізнес {prices['Бізнес']}₴",
+                    callback_data="class Бізнес",
                 )
             ],
         ]
