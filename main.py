@@ -5,7 +5,6 @@ import requests
 from datetime import datetime, time
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
-    CallbackQuery,
     Message,
     FSInputFile,
     ReplyKeyboardMarkup,
@@ -335,6 +334,45 @@ async def confirm_ride(callback: CallbackQuery, state: FSMContext):
         "🧾 Будь ласка, оцініть поїздку:", reply_markup=rating_kb
     )
     await state.set_state(RideStates.waiting_for_rating)
+
+    # Автоматична оцінка 5, якщо не поставили через 2 хв
+    await asyncio.sleep(120)
+    current_state = await state.get_state()
+    if current_state == RideStates.waiting_for_rating:
+        await handle_rating(callback.message, 5, state)
+
+
+async def handle_rating(message, rating_value, state: FSMContext):
+    # Зчитуємо user_id водія (у майбутньому буде)
+    driver_id = "demo_driver"  # поки умовно
+    ratings_file = "drivers_rating.json"
+    if os.path.exists(ratings_file):
+        with open(ratings_file, "r") as f:
+            ratings = json.load(f)
+    else:
+        ratings = {}
+
+    if driver_id not in ratings:
+        ratings[driver_id] = []
+
+    ratings[driver_id].append(rating_value)
+
+    with open(ratings_file, "w") as f:
+        json.dump(ratings, f, indent=4)
+
+    await message.answer(f"✅ Дякуємо! Ваша оцінка: {rating_value} ⭐️")
+    restart_kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🔄 Перезапустити")]], resize_keyboard=True
+    )
+    await message.answer("Хочеш замовити ще одну поїздку?", reply_markup=restart_kb)
+    await state.clear()
+
+
+@dp.callback_query(RideStates.waiting_for_rating)
+async def process_rating(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    rating = int(callback.data.split("_")[1])
+    await handle_rating(callback.message, rating, state)
 
 
 if __name__ == "__main__":

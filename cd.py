@@ -1,17 +1,13 @@
-from datetime import datetime
-from zoneinfo import ZoneInfo
+def calculate_price(distance_km, car_class):
+    base_prices = {"Стандарт": 100, "Комфорт": 130, "Бізнес": 170}
+    per_km_rates = {"Стандарт": 17, "Комфорт": 20, "Бізнес": 24}
 
+    base_price = base_prices[car_class]
+    per_km_rate = per_km_rates[car_class]
 
-def is_peak_time():
-    now = datetime.now(ZoneInfo("Europe/Kyiv"))
-    current_hour = now.hour
-    current_minute = now.minute
+    if distance_km <= 2:
+        price = base_price
+    else:
+        price = base_price + (distance_km - 2) * per_km_rate
 
-    minutes = current_hour * 60 + current_minute
-
-    peak_periods = [
-        (300, 360),  # 05:00–06:00
-        (450, 660),  # 07:30–11:00
-        (990, 1170),  # 16:30–19:30
-        (1290, 1440),  # 21:30–00:00
-    ]
+    return round(price)
