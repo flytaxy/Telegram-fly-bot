@@ -310,6 +310,32 @@ async def change_address(message: Message, state: FSMContext):
     await state.set_state(RideStates.waiting_for_address)
 
 
+@dp.callback_query(RideStates.waiting_for_confirmation, F.data == "confirm_ride")
+async def confirm_ride(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await callback.message.answer("🚕 Замовлення підтверджено! Шукаємо водія...")
+    await state.update_data(confirmed=True)
+
+    # Імітуємо завершення поїздки через 60 секунд
+    await asyncio.sleep(60)
+    await callback.message.answer("🏁 Поїздку завершено!")
+    rating_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⭐️ 1", callback_data="rate_1"),
+                InlineKeyboardButton(text="⭐️ 2", callback_data="rate_2"),
+                InlineKeyboardButton(text="⭐️ 3", callback_data="rate_3"),
+                InlineKeyboardButton(text="⭐️ 4", callback_data="rate_4"),
+                InlineKeyboardButton(text="⭐️ 5", callback_data="rate_5"),
+            ]
+        ]
+    )
+    await callback.message.answer(
+        "🧾 Будь ласка, оцініть поїздку:", reply_markup=rating_kb
+    )
+    await state.set_state(RideStates.waiting_for_rating)
+
+
 if __name__ == "__main__":
     import asyncio
     from aiogram import Bot, Dispatcher
