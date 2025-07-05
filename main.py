@@ -258,3 +258,109 @@ if __name__ == "__main__":
     import asyncio
 
     asyncio.run(dp.start_polling(bot))
+
+
+# === Обробка вибору класу авто ===
+@dp.callback_query(F.data.startswith("class_"))
+async def handle_car_class(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    car_class = callback.data.split("_")[1]
+    distance_km = data["distance_km"]
+    price = calculate_price(car_class, distance_km)
+
+    await state.update_data(car_class=car_class, price=price)
+
+    # Показ кнопки підтвердження
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Підтвердити замовлення", callback_data="confirm_ride"
+                )
+            ]
+        ]
+    )
+
+    await callback.message.answer(
+        f"Вартість поїздки класом '{car_class.title()}': {price}₴",
+        reply_markup=keyboard,
+    )
+    await callback.answer()
+
+
+# === Підтвердження замовлення ===
+@dp.callback_query(F.data == "confirm_ride")
+async def confirm_ride(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await callback.message.answer(
+        "🚕 Поїздку завершено. Дякуємо, що скористались FlyTaxi!"
+    )
+
+    # Надсилаємо кнопки оцінки
+    rating_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="⭐️1", callback_data="rate_1"),
+                InlineKeyboardButton(text="⭐️2", callback_data="rate_2"),
+                InlineKeyboardButton(text="⭐️3", callback_data="rate_3"),
+                InlineKeyboardButton(text="⭐️4", callback_data="rate_4"),
+                InlineKeyboardButton(text="⭐️5", callback_data="rate_5"),
+            ]
+        ]
+    )
+    await callback.message.answer("Оцініть поїздку:", reply_markup=rating_kb)
+    await state.set_state(RideStates.waiting_for_rating)
+    await callback.answer()
+
+
+# === Обробка оцінок водія ===
+@dp.callback_query(F.data.startswith("rate_"))
+async def rate_driver(callback: CallbackQuery, state: FSMContext):
+    rating_value = int(callback.data.split("_")[1])
+    user_id = callback.from_user.id
+
+    try:
+        with open("ratings.json", "r", encoding="utf-8") as f:
+            ratings = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        ratings = {}
+
+    user_ratings = ratings.get(str(user_id), {"history": [], "total": 0.0, "count": 0})
+
+    user_ratings["history"].append(rating_value)
+    user_ratings["total"] += rating_value
+    user_ratings["count"] += 1
+
+    ratings[str(user_id)] = user_ratings
+
+    with open("ratings.json", "w", encoding="utf-8") as f:
+        json.dump(ratings, f, indent=2, ensure_ascii=False)
+
+    await callback.message.answer("Дякуємо за оцінку!")
+    await state.clear()
+    await callback.answer()
+
+
+# === Автоматична оцінка, якщо не натиснуто ===
+async def confirm_ride_end(user_id: int):
+    try:
+        with open("ratings.json", "r", encoding="utf-8") as f:
+            ratings = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        ratings = {}
+
+    user_ratings = ratings.get(str(user_id), {"history": [], "total": 0.0, "count": 0})
+    user_ratings["history"].append(5)
+    user_ratings["total"] += 5
+    user_ratings["count"] += 1
+    ratings[str(user_id)] = user_ratings
+
+    with open("ratings.json", "w", encoding="utf-8") as f:
+        json.dump(ratings, f, indent=2, ensure_ascii=False)
+
+
+# === Запуск бота ===
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(dp.start_polling(bot))
