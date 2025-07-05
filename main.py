@@ -5,6 +5,7 @@ import requests
 from datetime import datetime, time
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
+    CallbackQuery,
     Message,
     FSInputFile,
     ReplyKeyboardMarkup,
