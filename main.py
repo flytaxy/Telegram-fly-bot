@@ -208,19 +208,18 @@ async def handle_address(message: Message, state: FSMContext):
             [
                 InlineKeyboardButton(
                     text=f"🚗 Стандарт {prices['Стандарт']}₴",
-                    callback_data="class Стандарт",
+                    callback_data="class-Стандарт",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text=f"🚘 Комфорт {prices['Комфорт']}₴",
-                    callback_data="class Комфорт",
+                    text=f"🚙 Комфорт {prices['Комфорт']}₴",
+                    callback_data="class-Комфорт",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text=f"🚖 Бізнес {prices['Бізнес']}₴",
-                    callback_data="class Бізнес",
+                    text=f"🚘 Бізнес {prices['Бізнес']}₴", callback_data="class-Бізнес"
                 )
             ],
         ]
