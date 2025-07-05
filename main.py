@@ -254,6 +254,7 @@ async def confirm_ride_end(user_id: str):
         json.dump(ratings, f, indent=4)
 
 
-        if __name__ == "__main__":
+if __name__ == "__main__":
     import asyncio
+
     asyncio.run(dp.start_polling(bot))
