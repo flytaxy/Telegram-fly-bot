@@ -310,113 +310,17 @@ async def change_address(message: Message, state: FSMContext):
     await state.set_state(RideStates.waiting_for_address)
 
 
-@dp.message(RideStates.waiting_for_address)
-async def handle_address(message: Message, state: FSMContext):
-    await state.update_data(destinations=[message.text])
-    await message.answer(
-        "🔁 Хочеш додати зупинки? Введіть до 5 адрес або напишіть «Готово»."
-    )
-    await state.set_state(RideStates.waiting_for_waypoints)
+if __name__ == "__main__":
+    import asyncio
+    from aiogram import Bot, Dispatcher
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from dotenv import load_dotenv
+    import os
 
+    load_dotenv()
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
+    bot = Bot(token=BOT_TOKEN)
+    dp = Dispatcher(storage=MemoryStorage())
+    from main import dp  # якщо всі хендлери в одному файлі
 
-@dp.message(RideStates.waiting_for_waypoints)
-async def handle_waypoints(message: Message, state: FSMContext):
-    user_data = await state.get_data()
-    destinations = user_data.get("destinations", [])
-    if message.text.lower() == "готово" or len(destinations) >= 6:
-        start_coords = user_data.get("start_coords")
-        coords = []
-        for address in destinations:
-            coord = geocode_address(address)
-            if coord:
-                coords.append(coord)
-
-        if len(coords) < 1:
-            await message.answer("❌ Не вдалося знайти жодної валідної адреси.")
-            return
-
-        await state.update_data(
-            end_coords=coords[-1], waypoints=coords[1:-1] if len(coords) > 2 else []
-        )
-        await build_route_with_waypoints(message, state)
-        return
-    else:
-        destinations.append(message.text)
-        await state.update_data(destinations=destinations)
-        await message.answer(
-            f"✅ Зупинка {len(destinations)} додана. Введіть ще або «Готово»."
-        )
-
-
-async def build_route_with_waypoints(message: Message, state: FSMContext):
-    user_data = await state.get_data()
-    start = user_data["start_coords"]
-    waypoints = user_data.get("waypoints", [])
-    end = user_data["end_coords"]
-    all_points = [f"{coord[0]},{coord[1]}" for coord in waypoints]
-
-    directions_url = "https://maps.googleapis.com/maps/api/directions/json"
-    params = {
-        "origin": f"{start[0]},{start[1]}",
-        "destination": f"{end[0]},{end[1]}",
-        "waypoints": "|".join(all_points),
-        "mode": "driving",
-        "key": GOOGLE_MAPS_API_KEY,
-    }
-
-    response = requests.get(directions_url, params=params)
-    data = response.json()
-
-    if data["status"] != "OK":
-        await message.answer("❌ Не вдалося побудувати маршрут.")
-        return
-
-    leg = data["routes"][0]["legs"]
-    total_distance_m = sum(leg[i]["distance"]["value"] for i in range(len(leg)))
-    total_duration = sum(leg[i]["duration"]["value"] for i in range(len(leg)))
-    distance_km = total_distance_m / 1000
-    duration_min = int(total_duration / 60)
-
-    await state.update_data(distance_km=distance_km, duration_min=duration_min)
-
-    peak = is_peak_time()
-    prices = {}
-    for car_class in ["Стандарт", "Комфорт", "Бізнес"]:
-        price = calculate_price(car_class, distance_km)
-        if peak:
-            price = int(price * 1.3)
-        prices[car_class] = price
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=f"🚗 Стандарт – {prices['Стандарт']}₴",
-                    callback_data="class_Стандарт",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=f"🚘 Комфорт – {prices['Комфорт']}₴",
-                    callback_data="class_Комфорт",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=f"🚖 Бізнес – {prices['Бізнес']}₴",
-                    callback_data="class_Бізнес",
-                )
-            ],
-        ]
-    )
-    await message.answer(
-        f"📍 Відстань: {distance_km:.1f} км🕓 Час у дорозі: {duration_min} хв",
-        reply_markup=kb,
-    )
-    await state.set_state(RideStates.waiting_for_car_class)
-
-
-@dp.message(F.text == "🔄 Перезапустити")
-async def restart(message: Message, state: FSMContext):
-    await state.clear()
-    await start(message, state)
+    asyncio.run(dp.start_polling(bot))
