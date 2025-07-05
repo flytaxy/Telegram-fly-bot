@@ -35,6 +35,7 @@ class RideStates(StatesGroup):
     waiting_for_waypoints = State()
     waiting_for_phone = State()
     waiting_for_location = State()
+    waiting_for_rating = State()
     waiting_for_address = State()
     waiting_for_car_class = State()
     waiting_for_confirmation = State()
