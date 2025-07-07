@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import requests
-from datetime import datetime, time
+from datetime import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
     CallbackQuery,
@@ -32,361 +32,309 @@ logging.basicConfig(level=logging.INFO)
 
 
 class RideStates(StatesGroup):
-    waiting_for_waypoints = State()
     waiting_for_phone = State()
     waiting_for_location = State()
-    waiting_for_rating = State()
-    waiting_for_address = State()
-    waiting_for_car_class = State()
-    waiting_for_confirmation = State()
-
-
-def is_peak_time():
-    now = datetime.now(ZoneInfo("Europe/Kyiv")).time()
-    peak_periods = [
-        (time(5, 0), time(6, 0)),
-        (time(7, 30), time(11, 0)),
-        (time(16, 30), time(19, 30)),
-        (time(21, 30), time(23, 59, 59)),
-    ]
-    return any(start <= now <= end for start, end in peak_periods)
-
-
-def is_restricted_time():
-    now = datetime.now(ZoneInfo("Europe/Kyiv")).time()
-    return time(0, 0) <= now < time(5, 0)
+    waiting_for_destination = State()
+    waiting_for_waypoints = State()
+    choosing_car_class = State()
+    confirming_order = State()
+    rating_driver = State
 
 
 def load_users():
-    if not os.path.exists("users.json"):
-        return {}
-    with open("users.json", "r") as f:
-        content = f.read().strip()
-        if not content:
-            return {}
-        return json.loads(content)
-
-        return {}
-    with open("users.json", "r") as f:
-        return json.load(f)
+    if os.path.exists("users.json"):
+        with open("users.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
 
 
-def save_user(user_id, data):
-    users = load_users()
-    users[str(user_id)] = data
-    with open("users.json", "w") as f:
-        json.dump(users, f, indent=4)
+def save_users(users):
+    with open("users.json", "w", encoding="utf-8") as f:
+        json.dump(users, f, ensure_ascii=False, indent=2)
+
+
+def load_ratings():
+    if os.path.exists("drivers_rating.json"):
+        with open("drivers_rating.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def save_ratings(ratings):
+    with open("drivers_rating.json", "w", encoding="utf-8") as f:
+        json.dump(ratings, f, ensure_ascii=False, indent=2)
+
+
+def is_peak_time(now_kyiv):
+    weekday = now_kyiv.weekday()
+    time_str = now_kyiv.strftime("%H:%M")
+    peak_periods = [
+        ("05:00", "06:00"),
+        ("07:30", "11:00"),
+        ("16:30", "19:30"),
+        ("21:30", "00:00"),
+    ]
+    weekend_peak = ("22:30", "00:00")
+    if weekday in [4, 5, 6]:  # п'ятниця, субота, неділя
+        if weekend_peak[0] <= time_str < weekend_peak[1]:
+            return True, 2.0
+    for start, end in peak_periods:
+        if start <= time_str < end:
+            return True, 1.5
+    return False, 1.0
+
+
+def is_curfew(now_kyiv):
+    return now_kyiv.time() < datetime.strptime("05:00", "%H:%M").time()
+
+
+users = load_users()
+ratings = load_ratings()
 
 
 @dp.message(CommandStart())
-async def start(message: Message, state: FSMContext):
-    if is_restricted_time():
+async def cmd_start(message: Message, state: FSMContext):
+    user_id = str(message.from_user.id)
+    now_kyiv = datetime.now(ZoneInfo("Europe/Kyiv"))
+    if is_curfew(now_kyiv):
         await message.answer(
-            "🚫 Сервіс тимчасово недоступний з 00:00 до 05:00 у зв'язку з комендантською годиною."
+            "🚫 Сервіс тимчасово недоступний через комендантську годину (00:00–05:00)."
         )
         return
 
-    await message.answer("👋 Привіт, тебе вітає TaxiFly!")
-
-    users = load_users()
-    user_id = str(message.from_user.id)
-    if user_id in users:
-        kb = ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="📍 Надіслати локацію", request_location=True)]
-            ],
-            resize_keyboard=True,
-        )
-        await message.answer("Надішліть свою локацію:", reply_markup=kb)
-        await state.set_state(RideStates.waiting_for_location)
-    else:
-        kb = ReplyKeyboardMarkup(
-            keyboard=[
-                [
-                    KeyboardButton(
-                        text="📱 Надіслати номер телефону", request_contact=True
-                    )
-                ]
-            ],
-            resize_keyboard=True,
-        )
-        await message.answer(
-            "Для початку, надішліть свій номер телефону:", reply_markup=kb
-        )
+    if user_id not in users:
         await state.set_state(RideStates.waiting_for_phone)
+        kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        kb.add(KeyboardButton("📱 Надіслати номер телефону", request_contact=True))
+        await message.answer(
+            "Вас вітає таксі Fly!\n\nЩоб продовжити, надішліть номер телефону:",
+            reply_markup=kb,
+        )
+    else:
+        await message.answer(
+            "👋 Вітаємо знову!\nНатисніть кнопку нижче, щоб розпочати замовлення.",
+            reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(
+                KeyboardButton("📍 Поділитись локацією", request_location=True)
+            ),
+        )
+        await state.set_state(RideStates.waiting_for_location)
 
 
 @dp.message(RideStates.waiting_for_phone, F.contact)
-async def handle_phone(message: Message, state: FSMContext):
+async def process_contact(message: Message, state: FSMContext):
     contact = message.contact
-    user_id = message.from_user.id
-    user_data = {
+    user_id = str(message.from_user.id)
+    users[user_id] = {
         "id": user_id,
-        "name": contact.first_name,
+        "name": message.from_user.full_name,
         "username": message.from_user.username,
-        "phone": contact.phone_number,
+        "phone_number": contact.phone_number,
     }
-    save_user(user_id, user_data)
-    kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📍 Надіслати локацію", request_location=True)]],
-        resize_keyboard=True,
+    save_users(users)
+    await message.answer(
+        "✅ Номер збережено.\nТепер надішліть вашу локацію:",
+        reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(
+            KeyboardButton("📍 Поділитись локацією", request_location=True)
+        ),
     )
-    await message.answer("Дякую! Тепер надішліть свою локацію:", reply_markup=kb)
     await state.set_state(RideStates.waiting_for_location)
 
 
 @dp.message(RideStates.waiting_for_location, F.location)
-async def handle_location(message: Message, state: FSMContext):
-    if is_restricted_time():
-        await message.answer(
-            "🚫 Сервіс тимчасово недоступний з 00:00 до 05:00 у зв'язку з комендантською годиною."
-        )
-        return
-    lat = message.location.latitude
-    lon = message.location.longitude
-    await state.update_data(start_coords=(lat, lon))
+async def process_location(message: Message, state: FSMContext):
+    latitude = message.location.latitude
+    longitude = message.location.longitude
+    await state.update_data(start_lat=latitude, start_lng=longitude)
     await message.answer(
-        "Тепер введіть адресу призначення:", reply_markup=types.ReplyKeyboardRemove()
+        "📍 Ваша точка A збережена.\n\nВведіть адресу призначення (точка B):",
+        reply_markup=types.ReplyKeyboardRemove(),
     )
-    await state.set_state(RideStates.waiting_for_address)
+    await state.set_state(RideStates.waiting_for_destination)
 
 
-def geocode_address(address: str):
-    url = "https://maps.googleapis.com/maps/api/geocode/json"
-    params = {"address": address, "key": GOOGLE_MAPS_API_KEY}
-    response = requests.get(url, params=params)
-    data = response.json()
-    if data["status"] == "OK":
-        location = data["results"][0]["geometry"]["location"]
-        return (location["lat"], location["lng"])
-    return None
-
-
-@dp.message(RideStates.waiting_for_address)
-async def handle_address(message: Message, state: FSMContext):
-    destination_address = message.text
-    end_coords = geocode_address(destination_address)
-    if not end_coords:
-        await message.answer("❌ Не вдалося знайти адресу. Спробуйте ще раз.")
-        return
-    await state.update_data(end_coords=end_coords)
-
-    user_data = await state.get_data()
-    start_coords = user_data["start_coords"]
-
-    directions_url = "https://maps.googleapis.com/maps/api/directions/json"
-    directions_params = {
-        "origin": f"{start_coords[0]},{start_coords[1]}",
-        "destination": f"{end_coords[0]},{end_coords[1]}",
-        "mode": "driving",
-        "key": GOOGLE_MAPS_API_KEY,
-    }
-    directions_response = requests.get(directions_url, params=directions_params)
-    directions_data = directions_response.json()
-
-    if directions_data["status"] != "OK":
-        await message.answer("❌ Не вдалося побудувати маршрут.")
-        return
-
-    route = directions_data["routes"][0]["legs"][0]
-    distance_text = route["distance"]["text"]
-    duration_text = route["duration"]["text"]
-    distance_km = float(route["distance"]["value"]) / 1000
-
-    await state.update_data(distance_km=distance_km)
-
-    peak = is_peak_time()
-    prices = {}
-    for car_class in ["Стандарт", "Комфорт", "Бізнес"]:
-        price = calculate_price(car_class, distance_km)
-        if peak:
-            price = int(price * 1.3)
-        prices[car_class] = price
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=f"🚗 Стандарт {prices['Стандарт']}₴",
-                    callback_data="class-Стандарт",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=f"🚙 Комфорт {prices['Комфорт']}₴",
-                    callback_data="class-Комфорт",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=f"🚘 Бізнес {prices['Бізнес']}₴", callback_data="class-Бізнес"
-                )
-            ],
-        ]
+@dp.message(RideStates.waiting_for_destination, F.text)
+async def process_destination(message: Message, state: FSMContext):
+    destination = message.text
+    await state.update_data(destination=destination)
+    await message.answer(
+        "🔁 Хочете додати зупинки?\nВведіть до 5 адрес по черзі або напишіть «Готово»."
     )
-    await message.answer("Оберіть клас авто:", reply_markup=kb)
-    await state.set_state(RideStates.waiting_for_car_class)
+    await state.update_data(waypoints=[])
+    await state.set_state(RideStates.waiting_for_waypoints)
 
 
-@dp.callback_query(RideStates.waiting_for_car_class)
-async def process_car_class(callback: types.CallbackQuery, state: FSMContext):
-    await callback.answer()
-    car_class = callback.data.split("_")[1]
-    user_data = await state.get_data()
-    start_coords = user_data.get("start_coords")
-    end_coords = user_data.get("end_coords")
+@dp.message(RideStates.waiting_for_waypoints, F.text)
+async def process_waypoints(message: Message, state: FSMContext):
+    text = message.text.strip()
+    data = await state.get_data()
+    waypoints = data.get("waypoints", [])
 
-    directions_url = "https://maps.googleapis.com/maps/api/directions/json"
-    directions_params = {
-        "origin": f"{start_coords[0]},{start_coords[1]}",
-        "destination": f"{end_coords[0]},{end_coords[1]}",
-        "mode": "driving",
-        "key": GOOGLE_MAPS_API_KEY,
-    }
-    directions_response = requests.get(directions_url, params=directions_params)
-    directions_data = directions_response.json()
-
-    if directions_data["status"] != "OK":
-        await callback.message.answer("❌ Не вдалося побудувати маршрут.")
+    if text.lower() == "готово":
+        await state.update_data(waypoints=waypoints)
+        await send_route_and_prices(message, state)
         return
 
-    route = directions_data["routes"][0]["legs"][0]
-    distance_text = route["distance"]["text"]
-    duration_text = route["duration"]["text"]
-    distance_km = float(route["distance"]["value"]) / 1000
-
-    price = calculate_price(car_class, distance_km)
-    if is_peak_time():
-        price = int(price * 1.3)
-
-    static_map_url = "https://maps.googleapis.com/maps/api/staticmap"
-    static_map_params = {
-        "size": "600x400",
-        "path": f"enc:{directions_data['routes'][0]['overview_polyline']['points']}",
-        "markers": f"color:green|label:A|{start_coords[0]},{start_coords[1]}&markers=color:red|label:B|{end_coords[0]},{end_coords[1]}",
-        "key": GOOGLE_MAPS_API_KEY,
-    }
-
-    map_response = requests.get(static_map_url, params=static_map_params)
-    with open("route_map.png", "wb") as f:
-        f.write(map_response.content)
-
-    if os.path.exists("route_map.png"):
-        photo = FSInputFile("route_map.png")
-        text = (
-            f"🟢 Маршрут побудовано!"
-            f"📍 Відстань: {distance_text}"
-            f"🕒 Тривалість: {duration_text}"
-            f"🚗 Клас авто: {car_class}"
-            f"💸 Вартість поїздки: {price}₴"
+    if len(waypoints) >= 5:
+        await message.answer(
+            "❗ Максимум 5 зупинок. Напишіть «Готово», щоб продовжити."
         )
-        if is_peak_time():
-            text += "⚠️ Застосовано піковий тариф: +30%"
+        return
 
-        await callback.message.answer_photo(photo)
-        confirm_kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="✅ Підтвердити замовлення", callback_data="confirm_ride"
-                    )
-                ]
-            ]
-        )
-        await callback.message.answer(text, reply_markup=confirm_kb)
-        await state.set_state(RideStates.waiting_for_confirmation)
-    else:
-        await callback.message.answer("❌ Не вдалося зберегти карту.")
-
-    import asyncio
-
-    import asyncio
-
-    asyncio.run(dp.start_polling(bot))
-
-
-@dp.message(F.text == "✏️ Змінити адресу")
-async def change_address(message: Message, state: FSMContext):
-    await message.answer("✏️ Введіть нову адресу призначення:")
-    await state.set_state(RideStates.waiting_for_address)
-
-
-@dp.callback_query(RideStates.waiting_for_confirmation, F.data == "confirm_ride")
-async def confirm_ride(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    await callback.message.answer("🚕 Замовлення підтверджено! Шукаємо водія...")
-    await state.update_data(confirmed=True)
-
-    # Імітуємо завершення поїздки через 60 секунд
-    await asyncio.sleep(60)
-    await callback.message.answer("🏁 Поїздку завершено!")
-    rating_kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="⭐️ 1", callback_data="rate_1"),
-                InlineKeyboardButton(text="⭐️ 2", callback_data="rate_2"),
-                InlineKeyboardButton(text="⭐️ 3", callback_data="rate_3"),
-                InlineKeyboardButton(text="⭐️ 4", callback_data="rate_4"),
-                InlineKeyboardButton(text="⭐️ 5", callback_data="rate_5"),
-            ]
-        ]
+    waypoints.append(text)
+    await state.update_data(waypoints=waypoints)
+    await message.answer(
+        f"✅ Зупинка додана. Всього зупинок: {len(waypoints)}.\n\nДодайте ще або напишіть «Готово»."
     )
+async def send_route_and_prices(message: Message, state: FSMContext):
+    data = await state.get_data()
+    origin = f"{data['start_lat']},{data['start_lng']}"
+    destination = data['destination']
+    waypoints = data.get("waypoints", [])
+
+    waypoint_param = ""
+    if waypoints:
+        waypoint_param = "&waypoints=" + "|".join(waypoints)
+
+    directions_url = (
+        f"https://maps.googleapis.com/maps/api/directions/json?"
+        f"origin={origin}&destination={destination}"
+        f"{waypoint_param}&key={GOOGLE_MAPS_API_KEY}&language=uk"
+    )
+
+    directions_response = requests.get(directions_url)
+    directions = directions_response.json()
+
+    if directions["status"] != "OK":
+        await message.answer("❌ Не вдалося побудувати маршрут. Перевірте адресу.")
+        return
+
+    route = directions["routes"][0]["legs"]
+    polyline = directions["routes"][0]["overview_polyline"]["points"]
+
+    total_distance_km = sum(leg["distance"]["value"] for leg in route) / 1000
+
+    map_url = (
+        f"https://maps.googleapis.com/maps/api/staticmap?"
+        f"size=600x400&path=enc:{polyline}&key={GOOGLE_MAPS_API_KEY}"
+    )
+
+    map_image = requests.get(map_url)
+    map_path = "route_map.png"
+    with open(map_path, "wb") as f:
+        f.write(map_image.content)
+
+    now_kyiv = datetime.now(ZoneInfo("Europe/Kyiv"))
+    is_peak, multiplier = is_peak_time(now_kyiv)
+    is_alert = not is_peak and False  # Підключення тривоги можливо пізніше
+
+    standard_price = calculate_price(total_distance_km, "standard", is_peak, is_alert)
+    comfort_price = calculate_price(total_distance_km, "comfort", is_peak, is_alert)
+    business_price = calculate_price(total_distance_km, "business", is_peak, is_alert)
+
+    await state.update_data(distance=total_distance_km,
+                            is_peak=is_peak,
+                            is_alert=is_alert)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"🚗 Стандарт – {standard_price}₴", callback_data="car_standard")],
+        [InlineKeyboardButton(text=f"🚙 Комфорт – {comfort_price}₴", callback_data="car_comfort")],
+        [InlineKeyboardButton(text=f"🚘 Бізнес – {business_price}₴", callback_data="car_business")]
+    ])
+
+    await message.answer_photo(FSInputFile(map_path), caption="🗺️ Ось ваш маршрут.\n\n Оберіть клас авто:", reply_markup=kb)
+    await state.set_state(RideStates.choosing_car_class)
+    @dp.callback_query(RideStates.choosing_car_class, F.data.startswith("car_"))
+    async def car_chosen(callback: CallbackQuery, state: FSMContext)
+         
+    car_class = callback.data.replace("car_", "")
+    await state.update_data(car_class=car_class)
+    await callback.message.answer("✅ Авто вибрано.\n\nНатисніть «Підтвердити», щоб замовити поїздку:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Підтвердити замовлення", callback_data="confirm_order")]
+        ]))
+    await state.set_state(RideStates.confirming_order)
+
+@dp.callback_query(RideStates.confirming_order, F.data == "confirm_order")
+async def confirm_order(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    price = calculate_price(data['distance'], data['car_class'], data['is_peak'], data['is_alert'])
+
     await callback.message.answer(
-        "🧾 Будь ласка, оцініть поїздку:", reply_markup=rating_kb
+        f"🚖 Замовлення підтверджено!\n\n"
+        f"Клас авто: {data['car_class'].capitalize()}\n"
+        f"Вартість: {price}₴\n"
+        f"Маршрут: {round(data['distance'], 1)} км\n\n"
+        f"🔄 Якщо хочете змінити точку призначення — натисніть нижче.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✏️ Змінити адресу", callback_data="change_address")],
+            [InlineKeyboardButton(text="🔄 Перезапустити", callback_data="restart")]
+        ])
     )
-    await state.set_state(RideStates.waiting_for_rating)
+    await state.set_state(RideStates.rating_driver)
 
-    # Автоматична оцінка 5, якщо не поставили через 2 хв
-    await asyncio.sleep(120)
-    current_state = await state.get_state()
-    if current_state == RideStates.waiting_for_rating:
-        await handle_rating(callback.message, 5, state)
+@dp.callback_query(F.data == "change_address")
+async def change_address(callback: CallbackQuery, state: FSMContext):
+    await callback.message.answer("✏️ Введіть нову адресу призначення (точку B):")
+    await state.set_state(RideStates.waiting_for_destination)
 
-
-async def handle_rating(message, rating_value, state: FSMContext):
-    # Зчитуємо user_id водія (у майбутньому буде)
-    driver_id = "demo_driver"  # поки умовно
-    ratings_file = "drivers_rating.json"
-    if os.path.exists(ratings_file):
-        with open(ratings_file, "r") as f:
-            ratings = json.load(f)
-    else:
-        ratings = {}
-
-    if driver_id not in ratings:
-        ratings[driver_id] = []
-
-    ratings[driver_id].append(rating_value)
-
-    with open(ratings_file, "w") as f:
-        json.dump(ratings, f, indent=4)
-
-    await message.answer(f"✅ Дякуємо! Ваша оцінка: {rating_value} ⭐️")
-    restart_kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="🔄 Перезапустити")]], resize_keyboard=True
-    )
-    await message.answer("Хочеш замовити ще одну поїздку?", reply_markup=restart_kb)
+@dp.callback_query(F.data == "restart")
+async def restart(callback: CallbackQuery, state: FSMContext):
     await state.clear()
+    await callback.message.answer("🔄 Замовлення скасовано.\nНатисніть /start, щоб почати заново.")
+    @dp.message(RideStates.rating_driver, F.text.in_(["1", "2", "3", "4", "5"]))
+@dp.message(RideStates.rating_driver, F.text.in_(["1", "2", "3", "4", "5"]))
+async def rate_driver(message: Message, state: FSMContext):
+    user_id = str(message.from_user.id)
+    driver_id = "demo_driver_001"  # У реальній версії — підставляється ID водія
+    rating = int(message.text)
 
+    driver = ratings.get(driver_id, {"total": 0, "count": 0, "history": []})
+    driver["history"].append(rating)
+    driver["count"] += 1
+    driver["total"] += rating
 
-@dp.callback_query(RideStates.waiting_for_rating)
-async def process_rating(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    rating = int(callback.data.split("_")[1])
-    await handle_rating(callback.message, rating, state)
+    # Видаляємо стару погану оцінку через 100 поїздок
+    if len(driver["history"]) > 100:
+        removed = driver["history"].pop(0)
+        driver["total"] -= removed
+        driver["count"] -= 1
 
+    ratings[driver_id] = driver
+    save_ratings(ratings)
+
+    average = driver["total"] / driver["count"] if driver["count"] else 5.0
+    await message.answer(f"✅ Дякуємо за оцінку!\nПоточний рейтинг водія: {average:.2f}⭐️")
+
+    await state.clear()
+    await message.answer("🔁 Натисніть /start, щоб зробити нове замовлення.")
+@dp.message(RideStates.rating_driver, F.text.in_(["1", "2", "3", "4", "5"]))
+async def rate_driver(message: Message, state: FSMContext):
+    user_id = str(message.from_user.id)
+    driver_id = "demo_driver_001"  # У реальній версії — підставляється ID водія
+    rating = int(message.text)
+
+    driver = ratings.get(driver_id, {"total": 0, "count": 0, "history": []})
+    driver["history"].append(rating)
+    driver["count"] += 1
+    driver["total"] += rating
+
+    if len(driver["history"]) > 100:
+        removed = driver["history"].pop(0)
+        driver["total"] -= removed
+        driver["count"] -= 1
+
+    ratings[driver_id] = driver
+    save_ratings(ratings)
+
+    average = driver["total"] / driver["count"] if driver["count"] else 5.0
+    await message.answer(f"✅ Дякуємо за оцінку!\nПоточний рейтинг водія: {average:.2f}⭐️")
+    await state.clear()
+    await message.answer("🔁 Натисніть /start, щоб зробити нове замовлення.")
+    async def on_startup(dispatcher: Dispatcher):logging.info("🚀 FlyTaxi бот запущено.")
+def main():
+    dp.startup.register(on_startup)
+    import asyncio
+    asyncio.run(dp.start_polling(bot))
 
 if __name__ == "__main__":
-    import asyncio
-    from aiogram import Bot, Dispatcher
-    from aiogram.fsm.storage.memory import MemoryStorage
-    from dotenv import load_dotenv
-    import os
-
-    load_dotenv()
-    BOT_TOKEN = os.getenv("BOT_TOKEN")
-    bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher(storage=MemoryStorage())
-    from main import dp  # якщо всі хендлери в одному файлі
-
-    asyncio.run(dp.start_polling(bot))
+    main()
